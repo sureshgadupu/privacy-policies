@@ -1,0 +1,66 @@
+name: Create Privacy Policy
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App display name (e.g. PDF Utilities)'
+        required: true
+        type: string
+      app_type:
+        description: 'App type — controls "app" vs "game" wording'
+        required: false
+        default: 'app'
+        type: choice
+        options:
+          - app
+          - game
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate privacy policy page
+        run: bash scripts/generate-privacy-policy.sh "$APP_NAME" "$APP_TYPE"
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          APP_TYPE: ${{ inputs.app_type }}
+
+      - name: Create branch, commit, and open pull request
+        run: |
+          set -euo pipefail
+
+          SLUG="$(printf '%s' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+          BRANCH="add-privacy-policy-$(date +%s)"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "Add privacy policy for $APP_NAME"
+          git push -u origin "$BRANCH"
+
+          BODY="Automated creation of the privacy policy page for **$APP_NAME** ($APP_TYPE).
+
+          - Adds \`${SLUG}-privacy-policy.html\` generated from \`privacy-policy-template.html\`
+          - Adds a link on \`index.html\`
+
+          Generated via the **Create Privacy Policy** workflow."
+
+          gh pr create \
+            --title "Add privacy policy for $APP_NAME" \
+            --body "$BODY" \
+            --base main \
+            --head "$BRANCH"
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          APP_TYPE: ${{ inputs.app_type }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
